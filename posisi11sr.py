@@ -8,7 +8,7 @@ from datetime import datetime
 # ==========================================================================
 BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH = str(BASE_DIR / "database_hasil5" / "database.sqlite")
-OUTPUT_FILE = str(BASE_DIR / "semua_artikel.html")
+OUTPUT_FILE = str(BASE_DIR / "index.html")
 OUTPUT_DIR = str(BASE_DIR)
 
 # ⚠️ GANTI DENGAN URL GITHUB PAGES ANDA (Sesuaikan dengan repo: newera)
@@ -22,7 +22,7 @@ def generate_sitemap(rows):
     xml_parts.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
 
     xml_parts.append(f"""    <url>
-        <loc>{BASE_URL}/semua_artikel.html</loc>
+        <loc>{BASE_URL}/index.html</loc>
         <lastmod>{today}</lastmod>
         <changefreq>daily</changefreq>
         <priority>1.0</priority>
@@ -31,7 +31,7 @@ def generate_sitemap(rows):
     for item in rows:
         artikel_id = item[0]
         xml_parts.append(f"""    <url>
-        <loc>{BASE_URL}/semua_artikel.html#artikel-{artikel_id}</loc>
+        <loc>{BASE_URL}/index.html#artikel-{artikel_id}</loc>
         <lastmod>{today}</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
@@ -97,7 +97,7 @@ def export_to_single_html():
     <meta property="og:type" content="website">
     <meta property="og:title" content="Kumpulan Berita & Artikel Terkini Hari Ini">
     <meta property="og:description" content="Portal berita terlengkap menyajikan update informasi terbaru dan terpopuler.">
-    <meta property="og:url" content="{BASE_URL}/semua_artikel.html">
+    <meta property="og:url" content="{BASE_URL}/index.html">
     <meta property="og:site_name" content="Portal Berita Indonesia">
     <meta property="og:locale" content="id_ID">
 
@@ -184,7 +184,7 @@ def export_to_single_html():
             const element = document.getElementById('pdf-content');
             const buttons = document.querySelectorAll('.btn-pdf');
             buttons.forEach(btn => btn.style.display = 'none');
-            const opt = { margin: 10, filename: 'Kumpulan_Semua_Artikel_News.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 1.5, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+            const opt = { margin: 10, filename: 'Kumpulan_index_News.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 1.5, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
             html2pdf().set(opt).from(element).save().then(() => { buttons.forEach(btn => btn.style.display = 'inline-block'); });
         }
     </script>
