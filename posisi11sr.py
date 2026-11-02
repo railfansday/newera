@@ -1,22 +1,26 @@
 import sqlite3
 import os
+from pathlib import Path
 from datetime import datetime
-from urllib.parse import quote
 
-DB_PATH = r"C:\laragon\www\database_hasil5\database.sqlite"
-OUTPUT_FILE = r"C:\laragon\www\semua_artikel.html"
-OUTPUT_DIR = r"C:\laragon\www"
-BASE_URL = "https://railfansday.github.io/english"   # ✅ GANTI ke URL GitHub Pages Anda
+# ==========================================================================
+# KONFIGURASI PATH (PORTABEL UNTUK LINUX/GITHUB ACTIONS)
+# ==========================================================================
+BASE_DIR = Path(__file__).parent.resolve()
+DB_PATH = str(BASE_DIR / "database_hasil5" / "database.sqlite")
+OUTPUT_FILE = str(BASE_DIR / "semua_artikel.html")
+OUTPUT_DIR = str(BASE_DIR)
+
+# ⚠️ GANTI DENGAN URL GITHUB PAGES ANDA (Sesuaikan dengan repo: newera)
+BASE_URL = "https://railfansday.github.io/newera"
 
 def generate_sitemap(rows):
-    """Generate sitemap.xml dari database."""
     sitemap_path = os.path.join(OUTPUT_DIR, "sitemap.xml")
     today = datetime.now().strftime('%Y-%m-%d')
 
     xml_parts = ['<?xml version="1.0" encoding="UTF-8"?>']
     xml_parts.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
 
-    # Homepage
     xml_parts.append(f"""    <url>
         <loc>{BASE_URL}/semua_artikel.html</loc>
         <lastmod>{today}</lastmod>
@@ -24,7 +28,6 @@ def generate_sitemap(rows):
         <priority>1.0</priority>
     </url>""")
 
-    # Setiap artikel (anchor)
     for item in rows:
         artikel_id = item[0]
         xml_parts.append(f"""    <url>
@@ -41,9 +44,7 @@ def generate_sitemap(rows):
 
     print(f"[SELESAI] Sitemap: {sitemap_path} ({len(rows)} artikel)")
 
-
 def generate_robots():
-    """Generate robots.txt."""
     robots_path = os.path.join(OUTPUT_DIR, "robots.txt")
 
     content = f"""User-agent: *
@@ -60,7 +61,6 @@ Crawl-delay: 1
         f.write(content)
 
     print(f"[SELESAI] Robots: {robots_path}")
-
 
 def export_to_single_html():
     if not os.path.exists(DB_PATH):
@@ -94,9 +94,6 @@ def export_to_single_html():
     <meta name="keywords" content="berita terkini, info terbaru, update harian, berita Indonesia">
     <meta name="author" content="Portal Berita Indonesia">
 
-    <!-- ✅ CANONICAL DIHAPUS — biarkan Google memilih sendiri -->
-
-    <!-- Open Graph -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="Kumpulan Berita & Artikel Terkini Hari Ini">
     <meta property="og:description" content="Portal berita terlengkap menyajikan update informasi terbaru dan terpopuler.">
@@ -104,19 +101,15 @@ def export_to_single_html():
     <meta property="og:site_name" content="Portal Berita Indonesia">
     <meta property="og:locale" content="id_ID">
 
-    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Kumpulan Berita & Artikel Terkini Hari Ini">
     <meta name="twitter:description" content="Portal berita terlengkap menyajikan update informasi terbaru dan terpopuler.">
 
-    <!-- Google Search Console Verification (GANTI DENGAN KODE ANDA) -->
     <meta name="google-site-verification" content="GANTI_DENGAN_KODE_GSC_ANDA">
 
-    <!-- Preconnect -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
 
-    <!-- Schema Markup JSON-LD CollectionPage (tanpa URL kanonis) -->
     <script type="application/ld+json">
     {{
       "@context": "https://schema.org",
@@ -132,87 +125,20 @@ def export_to_single_html():
     }}
     </script>
 
-    <!-- Library untuk konversi HTML ke PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
-        body {{
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f9;
-            margin: 0;
-            padding: 20px;
-            color: #333;
-        }}
-        .container {{
-            max-width: 900px;
-            margin: 0 auto;
-        }}
-        .header-actions {{
-            text-align: center;
-            margin-bottom: 30px;
-            background: #fff;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-        }}
-        .header-actions h1 {{
-            font-size: 26px;
-            color: #111;
-            margin-top: 0;
-        }}
-        .btn-download-all {{
-            background-color: #27ae60;
-            color: #ffffff;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: background-color 0.2s ease;
-        }}
-        .btn-download-all:hover {{
-            background-color: #219653;
-        }}
-        .article-card {{
-            background: #fff;
-            padding: 25px;
-            margin-bottom: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-            position: relative;
-            page-break-after: always;
-        }}
-        .article-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 15px;
-            margin-bottom: 15px;
-        }}
-        .article-card h2 {{
-            color: #1a0dab;
-            margin: 0;
-            font-size: 20px;
-            flex-grow: 1;
-        }}
-        .btn-pdf {{
-            background-color: #e74c3c;
-            color: #ffffff;
-            border: none;
-            padding: 8px 14px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: bold;
-            white-space: nowrap;
-        }}
-        .btn-pdf:hover {{
-            background-color: #c0392b;
-        }}
-        .article-body {{
-            line-height: 1.6;
-            font-size: 16px;
-        }}
+        body {{ font-family: Arial, sans-serif; background-color: #f4f4f9; margin: 0; padding: 20px; color: #333; }}
+        .container {{ max-width: 900px; margin: 0 auto; }}
+        .header-actions {{ text-align: center; margin-bottom: 30px; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }}
+        .header-actions h1 {{ font-size: 26px; color: #111; margin-top: 0; }}
+        .btn-download-all {{ background-color: #27ae60; color: #ffffff; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }}
+        .btn-download-all:hover {{ background-color: #219653; }}
+        .article-card {{ background: #fff; padding: 25px; margin-bottom: 30px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); position: relative; page-break-after: always; }}
+        .article-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; margin-bottom: 15px; }}
+        .article-card h2 {{ color: #1a0dab; margin: 0; font-size: 20px; flex-grow: 1; }}
+        .btn-pdf {{ background-color: #e74c3c; color: #ffffff; border: none; padding: 8px 14px; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; white-space: nowrap; }}
+        .btn-pdf:hover {{ background-color: #c0392b; }}
+        .article-body {{ line-height: 1.6; font-size: 16px; }}
     </style>
 </head>
 <body>
@@ -251,36 +177,15 @@ def export_to_single_html():
             const element = document.getElementById(elementId);
             const btn = element.querySelector('.btn-pdf');
             btn.style.display = 'none';
-
-            const opt = {
-                margin:       10,
-                filename:     filename + '.pdf',
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-
-            html2pdf().set(opt).from(element).save().then(() => {
-                btn.style.display = 'inline-block';
-            });
+            const opt = { margin: 10, filename: filename + '.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+            html2pdf().set(opt).from(element).save().then(() => { btn.style.display = 'inline-block'; });
         }
-
         function downloadAllPDF() {
             const element = document.getElementById('pdf-content');
             const buttons = document.querySelectorAll('.btn-pdf');
             buttons.forEach(btn => btn.style.display = 'none');
-
-            const opt = {
-                margin:       10,
-                filename:     'Kumpulan_Semua_Artikel_News.pdf',
-                image:        { type: 'jpeg', quality: 0.95 },
-                html2canvas:  { scale: 1.5, useCORS: true },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-
-            html2pdf().set(opt).from(element).save().then(() => {
-                buttons.forEach(btn => btn.style.display = 'inline-block');
-            });
+            const opt = { margin: 10, filename: 'Kumpulan_Semua_Artikel_News.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 1.5, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+            html2pdf().set(opt).from(element).save().then(() => { buttons.forEach(btn => btn.style.display = 'inline-block'); });
         }
     </script>
 </body>
@@ -302,7 +207,6 @@ def export_to_single_html():
     print("\n" + "="*50)
     print("[SELESAI] Semua file siap di-deploy!")
     print("="*50)
-
 
 if __name__ == "__main__":
     export_to_single_html()
