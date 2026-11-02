@@ -49,16 +49,15 @@ jobs:
             robots.txt
           retention-days: 3
 
-      # 4. COMMIT & PUSH (FIXED)
+      # 4. COMMIT & PUSH (Anti Error jika file kosong)
       - name: Commit & Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Tambahkan || true agar tidak error jika file tidak ada
+          # Gunakan || true agar tidak crash jika file tidak ditemukan
           git add semua_artikel.html sitemap.xml robots.txt || true
           
-          # Cek jika tidak ada perubahan
           git diff --staged --quiet && echo "Tidak ada perubahan" && exit 0
           
           git commit -m "Update otomatis dari GitHub Actions [skip ci]"
