@@ -4,15 +4,15 @@ from pathlib import Path
 from datetime import datetime
 
 # ==========================================================================
-# KONFIGURASI PATH (PORTABEL)
+# KONFIGURASI PATH (PORTABEL UNTUK LINUX/GITHUB ACTIONS)
 # ==========================================================================
 BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH = str(BASE_DIR / "database_hasil5" / "database.sqlite")
 OUTPUT_FILE = str(BASE_DIR / "semua_artikel.html")
 OUTPUT_DIR = str(BASE_DIR)
 
-# ⚠️ GANTI DENGAN URL GITHUB PAGES ANDA
-BASE_URL = "https://railfansday.github.io/english"
+# ⚠️ GANTI DENGAN URL GITHUB PAGES ANDA (Sesuaikan dengan repo: newera)
+BASE_URL = "https://railfansday.github.io/newera"
 
 def generate_sitemap(rows):
     sitemap_path = os.path.join(OUTPUT_DIR, "sitemap.xml")
@@ -94,7 +94,6 @@ def export_to_single_html():
     <meta name="keywords" content="berita terkini, info terbaru, update harian, berita Indonesia">
     <meta name="author" content="Portal Berita Indonesia">
 
-    <!-- Open Graph -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="Kumpulan Berita & Artikel Terkini Hari Ini">
     <meta property="og:description" content="Portal berita terlengkap menyajikan update informasi terbaru dan terpopuler.">
@@ -102,7 +101,6 @@ def export_to_single_html():
     <meta property="og:site_name" content="Portal Berita Indonesia">
     <meta property="og:locale" content="id_ID">
 
-    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Kumpulan Berita & Artikel Terkini Hari Ini">
     <meta name="twitter:description" content="Portal berita terlengkap menyajikan update informasi terbaru dan terpopuler.">
