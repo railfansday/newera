@@ -1,212 +1,214 @@
 import sqlite3
+import feedparser
+import requests
+from bs4 import BeautifulSoup
 import os
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+import json
+import re
 
 # ==========================================================================
 # KONFIGURASI PATH (PORTABEL UNTUK LINUX/GITHUB ACTIONS)
 # ==========================================================================
 BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH = str(BASE_DIR / "database_hasil5" / "database.sqlite")
-OUTPUT_FILE = str(BASE_DIR / "semua_artikel.html")
+RSS_FILE = str(BASE_DIR / "rss_list.txt")
 OUTPUT_DIR = str(BASE_DIR)
 
 # ⚠️ GANTI DENGAN URL GITHUB PAGES ANDA (Sesuaikan dengan repo: newera)
-BASE_URL = "https://railfansday.github.io/newera"
+BASE_URL = "https://railfansday.github.io/newera" 
 
-def generate_sitemap(rows):
-    sitemap_path = os.path.join(OUTPUT_DIR, "sitemap.xml")
-    today = datetime.now().strftime('%Y-%m-%d')
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+}
 
-    xml_parts = ['<?xml version="1.0" encoding="UTF-8"?>']
-    xml_parts.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
-
-    xml_parts.append(f"""    <url>
-        <loc>{BASE_URL}/semua_artikel.html</loc>
-        <lastmod>{today}</lastmod>
-        <changefreq>daily</changefreq>
-        <priority>1.0</priority>
-    </url>""")
-
-    for item in rows:
-        artikel_id = item[0]
-        xml_parts.append(f"""    <url>
-        <loc>{BASE_URL}/semua_artikel.html#artikel-{artikel_id}</loc>
-        <lastmod>{today}</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.7</priority>
-    </url>""")
-
-    xml_parts.append('</urlset>')
-
-    with open(sitemap_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(xml_parts))
-
-    print(f"[SELESAI] Sitemap: {sitemap_path} ({len(rows)} artikel)")
-
-def generate_robots():
-    robots_path = os.path.join(OUTPUT_DIR, "robots.txt")
-
-    content = f"""User-agent: *
-Allow: /
-
-# Sitemap
-Sitemap: {BASE_URL}/sitemap.xml
-
-# Crawl delay
-Crawl-delay: 1
+ADSTERRA_CODE = """
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {
+            'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2',
+            'format' : 'iframe',
+            'height' : 90,
+            'width' : 728,
+            'params' : {}
+        };
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
 """
 
-    with open(robots_path, "w", encoding="utf-8") as f:
-        f.write(content)
+TRENDING_KEYWORDS = [
+    "world cup", "piala dunia", "fifa", "ai", "artificial intelligence",
+    "blackbox", "openai", "gasoline", "bensin", "fuel price", "harga bbm",
+    "strait of hormuz", "selat hormuz", "iran", "israel", "middle east",
+    "timur tengah", "election", "pemilu", "inflation", "inflasi",
+    "bitcoin", "crypto", "stock market", "saham", "tech", "gadget",
+    "health", "kesehatan", "covid", "vaccine", "vaksin"
+]
 
-    print(f"[SELESAI] Robots: {robots_path}")
+def calculate_search_potential(title, content):
+    text = (str(title) + " " + str(content)).lower()
+    score = 0
+    for kw in TRENDING_KEYWORDS:
+        if kw in text:
+            score += 1
+    return score
 
-def export_to_single_html():
-    if not os.path.exists(DB_PATH):
-        print(f"Error: Database tidak ditemukan di {DB_PATH}")
-        return
-
+def init_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, judul, konten FROM artikel")
-    rows = cursor.fetchall()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS artikel (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            link TEXT UNIQUE,
+            judul TEXT,
+            konten TEXT,
+            gambar TEXT,
+            tanggal_publish TEXT,
+            tanggal_update TEXT
+        )
+    """)
+    cursor.execute("PRAGMA table_info(artikel)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if 'gambar' not in columns:
+        cursor.execute("ALTER TABLE artikel ADD COLUMN gambar TEXT")
+    if 'tanggal_publish' not in columns:
+        cursor.execute("ALTER TABLE artikel ADD COLUMN tanggal_publish TEXT")
+    if 'tanggal_update' not in columns:
+        cursor.execute("ALTER TABLE artikel ADD COLUMN tanggal_update TEXT")
+    conn.commit()
     conn.close()
 
-    if not rows:
-        print("Tidak ada artikel di dalam database.")
+def extract_full_content(url):
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=8)
+        if response.status_code != 200:
+            return None, None, None
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        image_url = None
+        og_image = soup.find('meta', property='og:image') or soup.find('meta', attrs={'name': 'og:image'})
+        if og_image and og_image.get('content'):
+            image_url = og_image['content']
+
+        tanggal = None
+        for meta_prop in ['article:published_time', 'article:modified_time', 'datePublished']:
+            meta = soup.find('meta', property=meta_prop) or soup.find('meta', attrs={'name': meta_prop})
+            if meta and meta.get('content'):
+                tanggal = meta['content']
+                break
+
+        paragraphs = soup.find_all('p')
+        full_text = []
+        for p in paragraphs:
+            text = p.get_text().strip()
+            if len(text) > 40 and not any(x in text.lower() for x in ['cookie', 'privacy policy', 'subscribe', 'all rights reserved', 'terms of use']):
+                full_text.append(f"<p>{text}</p>")
+
+        if not full_text:
+            return None, image_url, tanggal
+
+        return "\n".join(full_text), image_url, tanggal
+    except Exception:
+        return None, None, None
+
+def process_single_feed(feed_url):
+    feed_url = feed_url.strip()
+    if not feed_url or feed_url.startswith("#"):
+        return 0, 0
+
+    baru = 0
+    duplikat = 0
+
+    try:
+        feed = feedparser.parse(feed_url)
+        conn = sqlite3.connect(DB_PATH, timeout=15)
+        cursor = conn.cursor()
+
+        for entry in feed.entries:
+            link = entry.get('link', '')
+            judul = entry.get('title', 'Tanpa Judul')
+            if not link:
+                continue
+
+            cursor.execute("SELECT id FROM artikel WHERE link = ?", (link,))
+            if cursor.fetchone():
+                duplikat += 1
+                continue
+
+            full_text_html, image_url, tanggal = extract_full_content(link)
+
+            if not full_text_html:
+                summary = entry.get('summary', entry.get('description', 'Konten tidak tersedia.'))
+                full_text_html = f"<p>{summary}</p>"
+
+            if not tanggal:
+                published_parsed = entry.get('published_parsed')
+                if published_parsed:
+                    tanggal = datetime(*published_parsed[:6]).isoformat()
+                else:
+                    tanggal = datetime.now().isoformat()
+
+            tanggal_update = datetime.now().isoformat()
+
+            img_tag = f'<div style="text-align:center; margin-bottom:20px;"><img src="{image_url}" alt="{judul}" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>' if image_url else ""
+
+            konten_lengkap = f"""
+            {img_tag}
+            {ADSTERRA_CODE}
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                {full_text_html}
+                <p style="margin-top: 25px;">
+                    <a href="{link}" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            {ADSTERRA_CODE}
+            """
+
+            try:
+                cursor.execute(
+                    "INSERT INTO artikel (link, judul, konten, gambar, tanggal_publish, tanggal_update) VALUES (?, ?, ?, ?, ?, ?)",
+                    (link, judul, konten_lengkap, image_url, tanggal, tanggal_update)
+                )
+                conn.commit()
+                baru += 1
+            except sqlite3.IntegrityError:
+                duplikat += 1
+            except Exception:
+                pass
+
+        conn.close()
+    except Exception as e:
+        print(f"Error pada feed {feed_url}: {e}")
+
+    return baru, duplikat
+
+def scrape_massive_rss():
+    if not os.path.exists(RSS_FILE):
+        print(f"[ERROR] File {RSS_FILE} tidak ditemukan!")
         return
-
-    sample_titles = ", ".join([row[1] for row in rows[:5]]) if rows else "Berita Terkini"
-    sample_titles = sample_titles[:150]
-
-    html_content = f"""<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-    <meta name="googlebot" content="index, follow">
-    <meta name="bingbot" content="index, follow">
-
-    <title>Kumpulan Berita & Artikel Terkini Hari Ini ({len(rows)} Update Pilihan)</title>
-    <meta name="description" content="Portal berita terlengkap menyajikan update informasi seputar {sample_titles} dan berita pilihan terpopuler hari ini.">
-    <meta name="keywords" content="berita terkini, info terbaru, update harian, berita Indonesia">
-    <meta name="author" content="Portal Berita Indonesia">
-
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="Kumpulan Berita & Artikel Terkini Hari Ini">
-    <meta property="og:description" content="Portal berita terlengkap menyajikan update informasi terbaru dan terpopuler.">
-    <meta property="og:url" content="{BASE_URL}/semua_artikel.html">
-    <meta property="og:site_name" content="Portal Berita Indonesia">
-    <meta property="og:locale" content="id_ID">
-
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Kumpulan Berita & Artikel Terkini Hari Ini">
-    <meta name="twitter:description" content="Portal berita terlengkap menyajikan update informasi terbaru dan terpopuler.">
-
-    <meta name="google-site-verification" content="GANTI_DENGAN_KODE_GSC_ANDA">
-
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
-
-    <script type="application/ld+json">
-    {{
-      "@context": "https://schema.org",
-      "@type": "CollectionPage",
-      "name": "Kumpulan Berita & Artikel Terkini",
-      "description": "Portal direktori update berita pilihan dan terpopuler.",
-      "isPartOf": {{
-        "@type": "WebSite",
-        "name": "Portal Berita Indonesia"
-      }},
-      "dateModified": "{datetime.now().strftime('%Y-%m-%d')}",
-      "inLanguage": "id-ID"
-    }}
-    </script>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <style>
-        body {{ font-family: Arial, sans-serif; background-color: #f4f4f9; margin: 0; padding: 20px; color: #333; }}
-        .container {{ max-width: 900px; margin: 0 auto; }}
-        .header-actions {{ text-align: center; margin-bottom: 30px; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }}
-        .header-actions h1 {{ font-size: 26px; color: #111; margin-top: 0; }}
-        .btn-download-all {{ background-color: #27ae60; color: #ffffff; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }}
-        .btn-download-all:hover {{ background-color: #219653; }}
-        .article-card {{ background: #fff; padding: 25px; margin-bottom: 30px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); position: relative; page-break-after: always; }}
-        .article-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; margin-bottom: 15px; }}
-        .article-card h2 {{ color: #1a0dab; margin: 0; font-size: 20px; flex-grow: 1; }}
-        .btn-pdf {{ background-color: #e74c3c; color: #ffffff; border: none; padding: 8px 14px; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; white-space: nowrap; }}
-        .btn-pdf:hover {{ background-color: #c0392b; }}
-        .article-body {{ line-height: 1.6; font-size: 16px; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header-actions">
-            <h1>Katalog Berita & Artikel Terkini ({len(rows)} Informasi Pilihan)</h1>
-            <p style="margin-bottom: 20px; color: #555;">Pusat update berita harian terlengkap, akurat, dan terstruktur dalam satu halaman.</p>
-            <button class="btn-download-all" onclick="downloadAllPDF()">📚 Download Semua Artikel (PDF)</button>
-        </div>
-
-        <div id="pdf-content">
-"""
-
-    for item in rows:
-        artikel_id, judul, konten = item
-        safe_title = str(judul).replace('"', '').replace("'", '').replace('/', '_').replace('\\', '_')
-
-        html_content += f"""
-            <article class="article-card" id="artikel-{artikel_id}">
-                <div class="article-header">
-                    <h2>#{artikel_id}. {judul}</h2>
-                    <button class="btn-pdf no-print" onclick="downloadSinglePDF('artikel-{artikel_id}', '{safe_title}')">📄 PDF Artikel Ini</button>
-                </div>
-                <div class="article-body">
-                    {konten}
-                </div>
-            </article>
-"""
-
-    html_content += """
-        </div>
-    </div>
-
-    <script>
-        function downloadSinglePDF(elementId, filename) {
-            const element = document.getElementById(elementId);
-            const btn = element.querySelector('.btn-pdf');
-            btn.style.display = 'none';
-            const opt = { margin: 10, filename: filename + '.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
-            html2pdf().set(opt).from(element).save().then(() => { btn.style.display = 'inline-block'; });
-        }
-        function downloadAllPDF() {
-            const element = document.getElementById('pdf-content');
-            const buttons = document.querySelectorAll('.btn-pdf');
-            buttons.forEach(btn => btn.style.display = 'none');
-            const opt = { margin: 10, filename: 'Kumpulan_Semua_Artikel_News.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 1.5, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
-            html2pdf().set(opt).from(element).save().then(() => { buttons.forEach(btn => btn.style.display = 'inline-block'); });
-        }
-    </script>
-</body>
-</html>
-"""
-
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        f.write(html_content)
-
-    print(f"[SELESAI] Berhasil mengeksport {len(rows)} artikel:")
-    print(f" -> {OUTPUT_FILE}")
-
-    print("\n[*] Generate sitemap.xml...")
-    generate_sitemap(rows)
-
-    print("\n[*] Generate robots.txt...")
-    generate_robots()
-
-    print("\n" + "="*50)
-    print("[SELESAI] Semua file siap di-deploy!")
-    print("="*50)
+    init_db()
+    with open(RSS_FILE, "r", encoding="utf-8") as f:
+        rss_urls = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    print(f"[*] Memulai penarikan data dari {len(rss_urls)} sumber RSS...\n")
+    total_baru = 0
+    total_duplikat = 0
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(process_single_feed, url): url for url in rss_urls}
+        for future in as_completed(futures):
+            b, d = future.result()
+            total_baru += b
+            total_duplikat += d
+    print("\n" + "="*45)
+    print(f"[SELESAI PEMANENAN]")
+    print(f" - Berhasil disimpan (Artikel Baru) : {total_baru}")
+    print(f" - Dilewati (Sudah ada di DB)        : {total_duplikat}")
+    print("="*45)
 
 if __name__ == "__main__":
-    export_to_single_html()
+    scrape_massive_rss()
